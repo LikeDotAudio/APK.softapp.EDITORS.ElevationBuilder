@@ -1,0 +1,8 @@
+{
+  "name": "Equipment Rack Elevation Builder",
+  "icon": "🗄️",
+  "group": "Design",
+  "subGroup": "Racks & Infrastructure",
+  "description": "Equipment Rack Elevation Builder: design 19-inch 42U equipment racks, snap equipment modules to rack units (RU), inspect RU clearance, calculate power consumption and thermal BTU heat loads, view front/rear elevations, and export rack schedules.",
+  "app": "APK:Softapps/EDITORS/EDITORS.ElevationBuilder/index.html"
+}

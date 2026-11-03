@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Equipment Rack Elevation Builder — APK.audio</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>🗄️</span>
+      <span>Equipment Rack Elevation Builder</span>
+      <span style="font-size:0.75rem; background:#1e293b; color:#38bdf8; padding:2px 8px; border-radius:12px;">19-inch · 42U</span>
+    </div>
+    <div class="actions">
+      <button id="btn-clear">Clear Rack</button>
+      <button class="primary" id="btn-export">Export Schedule</button>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <div class="equipment-catalog">
+      <h3>Equipment Catalog</h3>
+      <div id="catalog-list"></div>
+    </div>
+
+    <div class="rack-viewport">
+      <div class="rack-frame">
+        <div class="rack-header">
+          <span>RACK 01 · 42U STANDARD</span>
+          <span style="color:#64748b; font-size:11px;">FRONT ELEVATION</span>
+        </div>
+        <div class="rack-units-container" id="rack-units"></div>
+      </div>
+    </div>
+
+    <div class="rack-stats">
+      <h3>Rack Metrics</h3>
+      <div class="stat-box">
+        <div class="title">Capacity Used</div>
+        <div class="value" id="stat-capacity">0 / 42 RU</div>
+      </div>
+      <div class="stat-box">
+        <div class="title">Total Power</div>
+        <div class="value" id="stat-power">0 W</div>
+      </div>
+      <div class="stat-box">
+        <div class="title">Heat Dissipation</div>
+        <div class="value" id="stat-btu">0 BTU/hr</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { EQUIPMENT_CATALOG, RackElevationEngine } from './js/rackElevation.js';
+
+    const engine = new RackElevationEngine(42);
+    const catalogList = document.getElementById('catalog-list');
+    const rackUnits = document.getElementById('rack-units');
+    const statCapacity = document.getElementById('stat-capacity');
+    const statPower = document.getElementById('stat-power');
+    const statBtu = document.getElementById('stat-btu');
+
+    // Populate catalog
+    EQUIPMENT_CATALOG.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'catalog-item';
+      el.draggable = true;
+      el.innerHTML = `
+        <div class="name">${item.name}</div>
+        <div class="meta">
+          <span>${item.ru} RU</span>
+          <span>·</span>
+          <span>${item.powerW}W</span>
+          <span>·</span>
+          <span>${item.category}</span>
+        </div>
+      `;
+      el.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', item.id);
+      });
+      catalogList.appendChild(el);
+    });
+
+    // Render 42 RU slots
+    function renderRack() {
+      rackUnits.innerHTML = '';
+      for (let ru = 1; ru <= 42; ru++) {
+        const slot = document.createElement('div');
+        slot.className = 'ru-slot';
+        slot.dataset.ru = ru;
+        slot.innerHTML = `<div class="ru-number">${ru}</div><div class="ru-dropzone"></div>`;
+
+        slot.addEventListener('dragover', (e) => e.preventDefault());
+        slot.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const catId = e.dataTransfer.getData('text/plain');
+          if (catId) {
+            engine.installDevice(catId, ru);
+            renderRack();
+          }
+        });
+
+        rackUnits.appendChild(slot);
+      }
+
+      // Draw installed devices
+      engine.installed.forEach(d => {
+        // Find slot
+        const slot = rackUnits.querySelector(`[data-ru="${d.startRu}"]`);
+        if (slot) {
+          const dev = document.createElement('div');
+          dev.className = 'installed-device';
+          dev.style.height = `${d.ru * 22}px`;
+          dev.style.bottom = '0px';
+          dev.innerHTML = `
+            <span>${d.name}</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="tag">${d.ru}U · ${d.powerW}W</span>
+              <button style="padding:2px 6px; font-size:10px; border-color:#ef4444; color:#ef4444;" data-remove="${d.id}">✕</button>
+            </div>
+          `;
+          dev.querySelector('[data-remove]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            engine.removeDevice(d.id);
+            renderRack();
+          });
+          slot.appendChild(dev);
+        }
+      });
+
+      // Update metrics
+      const m = engine.getMetrics();
+      statCapacity.textContent = `${m.occupiedRu} / ${m.totalRu} RU (${m.utilizationPct}%)`;
+      statPower.textContent = `${m.totalWatts} W`;
+      statBtu.textContent = `${m.totalBtu} BTU/hr`;
+    }
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      engine.installed = [];
+      renderRack();
+    });
+
+    document.getElementById('btn-export').addEventListener('click', () => {
+      const data = { rack: 'RACK-01', metrics: engine.getMetrics(), installed: engine.installed };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'rack-schedule-RACK01.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Initial pre-populated sample
+    engine.installDevice('ups-3u', 1);
+    engine.installDevice('pdu-1u', 4);
+    engine.installDevice('amp-4ch', 10);
+    engine.installDevice('dsp-core', 12);
+    engine.installDevice('bantam-96', 20);
+    engine.installDevice('patch-48', 21);
+    engine.installDevice('sw-48p', 22);
+    engine.installDevice('srv-1u', 35);
+    renderRack();
+  </script>
+</body>
+</html>
