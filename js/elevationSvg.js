@@ -14,7 +14,7 @@ const CATEGORY_COLORS = {
   Power: { fill: '#4C1D24', border: '#EF4444', text: '#FECACA' },
   Compute: { fill: '#3B2456', border: '#A855F7', text: '#E9D5FF' },
   Infrastructure: { fill: '#1E293B', border: '#64748B', text: '#CBD5E1' },
-  Filler: { fill: '#101726', border: '#2D3D60', text: '#64748B' },
+  Filler: { fill: '#101726', border: '#3f3f46', text: '#64748B' },
 };
 
 export function buildElevationSvg(rack, options = {}) {
@@ -41,23 +41,23 @@ export function buildElevationSvg(rack, options = {}) {
   const parts = [];
 
   // Rack frame and rails
-  parts.push(`<rect x="${rackX}" y="${rackY}" width="${rackTotalWidthMm}" height="${rackTotalHeightMm}" rx="4" fill="#0C1220" stroke="#2D3D60" stroke-width="1.5"/>`);
+  parts.push(`<rect x="${rackX}" y="${rackY}" width="${rackTotalWidthMm}" height="${rackTotalHeightMm}" rx="4" fill="#0C1220" stroke="#3f3f46" stroke-width="1.5"/>`);
   // Left and right mounting rails
-  parts.push(`<rect x="${rackX}" y="${rackY}" width="${railWidthMm}" height="${rackTotalHeightMm}" fill="#161F36" stroke="#2D3D60" stroke-width="0.8"/>`);
-  parts.push(`<rect x="${rackX + rackTotalWidthMm - railWidthMm}" y="${rackY}" width="${railWidthMm}" height="${rackTotalHeightMm}" fill="#161F36" stroke="#2D3D60" stroke-width="0.8"/>`);
+  parts.push(`<rect x="${rackX}" y="${rackY}" width="${railWidthMm}" height="${rackTotalHeightMm}" fill="#161F36" stroke="#3f3f46" stroke-width="0.8"/>`);
+  parts.push(`<rect x="${rackX + rackTotalWidthMm - railWidthMm}" y="${rackY}" width="${railWidthMm}" height="${rackTotalHeightMm}" fill="#161F36" stroke="#3f3f46" stroke-width="0.8"/>`);
 
   // RU grid lines and EIA numbers (RU 1 at bottom, RU totalRu at top)
   for (let u = 1; u <= totalRu; u++) {
     const ruY = rackY + (totalRu - u) * ruHeightMm;
 
     // Divider line
-    parts.push(`<line x1="${rackX}" y1="${ruY}" x2="${rackX + rackTotalWidthMm}" y2="${ruY}" stroke="#1E2A45" stroke-width="0.4"/>`);
+    parts.push(`<line x1="${rackX}" y1="${ruY}" x2="${rackX + rackTotalWidthMm}" y2="${ruY}" stroke="#2c2c2c" stroke-width="0.4"/>`);
 
     // Rail screw hole markers (3 per U standard EIA-310)
     [0.2, 0.5, 0.8].forEach(fraction => {
       const holeY = ruY + fraction * ruHeightMm;
-      parts.push(`<circle cx="${rackX + railWidthMm / 2}" cy="${holeY}" r="1.5" fill="#080C16" stroke="#2D3D60" stroke-width="0.4"/>`);
-      parts.push(`<circle cx="${rackX + rackTotalWidthMm - railWidthMm / 2}" cy="${holeY}" r="1.5" fill="#080C16" stroke="#2D3D60" stroke-width="0.4"/>`);
+      parts.push(`<circle cx="${rackX + railWidthMm / 2}" cy="${holeY}" r="1.5" fill="#121212" stroke="#3f3f46" stroke-width="0.4"/>`);
+      parts.push(`<circle cx="${rackX + rackTotalWidthMm - railWidthMm / 2}" cy="${holeY}" r="1.5" fill="#121212" stroke="#3f3f46" stroke-width="0.4"/>`);
     });
 
     // RU number text on rails
@@ -87,10 +87,10 @@ export function buildElevationSvg(rack, options = {}) {
     parts.push(`<text x="${devX + 12}" y="${titleY}" fill="${colors.text}" font-size="9" font-weight="bold" font-family="sans-serif">${esc(dev.name)}</text>`);
 
     if (devHeightMm >= 30) {
-      parts.push(`<text x="${devX + 12}" y="${devY + devHeightMm - 8}" fill="#8B9BB4" font-size="7" font-family="monospace">${dev.powerW ? `${dev.powerW}W · ${dev.btuHr || 0} BTU/hr` : ''} · ${dev.category || ''}</text>`);
+      parts.push(`<text x="${devX + 12}" y="${devY + devHeightMm - 8}" fill="#888888" font-size="7" font-family="monospace">${dev.powerW ? `${dev.powerW}W · ${dev.btuHr || 0} BTU/hr` : ''} · ${dev.category || ''}</text>`);
     }
 
-    parts.push(`<text x="${devX + devWidthMm - 12}" y="${titleY}" fill="#8B9BB4" font-size="8" font-weight="bold" text-anchor="end" font-family="monospace">${heightU}U</text>`);
+    parts.push(`<text x="${devX + devWidthMm - 12}" y="${titleY}" fill="#888888" font-size="8" font-weight="bold" text-anchor="end" font-family="monospace">${heightU}U</text>`);
     parts.push(`</g>`);
   });
 
@@ -102,16 +102,16 @@ export function buildElevationSvg(rack, options = {}) {
     const headY = groundY - personHeightMm;
 
     // Head
-    parts.push(`<circle cx="${figX + 25}" cy="${headY + 20}" r="16" fill="#1E2A45" stroke="#4A9EFF" stroke-width="1"/>`);
+    parts.push(`<circle cx="${figX + 25}" cy="${headY + 20}" r="16" fill="#2c2c2c" stroke="#4A9EFF" stroke-width="1"/>`);
     // Body & Legs
-    parts.push(`<rect x="${figX + 10}" y="${headY + 38}" width="30" height="70" rx="6" fill="#1E2A45" stroke="#4A9EFF" stroke-width="1"/>`);
+    parts.push(`<rect x="${figX + 10}" y="${headY + 38}" width="30" height="70" rx="6" fill="#2c2c2c" stroke="#4A9EFF" stroke-width="1"/>`);
     parts.push(`<line x1="${figX + 18}" y1="${headY + 108}" x2="${figX + 18}" y2="${groundY}" stroke="#4A9EFF" stroke-width="3" stroke-linecap="round"/>`);
     parts.push(`<line x1="${figX + 32}" y1="${headY + 108}" x2="${figX + 32}" y2="${groundY}" stroke="#4A9EFF" stroke-width="3" stroke-linecap="round"/>`);
-    parts.push(`<text x="${figX + 25}" y="${groundY + 15}" fill="#8B9BB4" font-size="7" text-anchor="middle" font-family="sans-serif">6ft / 1.83m Scale</text>`);
+    parts.push(`<text x="${figX + 25}" y="${groundY + 15}" fill="#888888" font-size="7" text-anchor="middle" font-family="sans-serif">6ft / 1.83m Scale</text>`);
   }
 
   // Header Title
-  parts.push(`<text x="${rackX + rackTotalWidthMm / 2}" y="${marginMm}" fill="#F0F4F8" font-size="12" font-weight="bold" text-anchor="middle" font-family="sans-serif">${esc(rack.name || 'EQUIPMENT RACK')} · ${face.toUpperCase()} ELEVATION (${totalRu} RU)</text>`);
+  parts.push(`<text x="${rackX + rackTotalWidthMm / 2}" y="${marginMm}" fill="#f4f4f5" font-size="12" font-weight="bold" text-anchor="middle" font-family="sans-serif">${esc(rack.name || 'EQUIPMENT RACK')} · ${face.toUpperCase()} ELEVATION (${totalRu} RU)</text>`);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSvgWidth} ${totalSvgHeight}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">`
     + parts.join('')
