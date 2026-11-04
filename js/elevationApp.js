@@ -1,9 +1,13 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
-import { BlockBridge } from './blockBridge.js';
 import { buildElevationSvg } from './elevationSvg.js';
 import { autoBlankFace } from './autoBlank.js';
+import {
+  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered,
+} from './rackBlock.js';
+
+const S = () => window.APKSoftapp;
 
 export class ElevationApp {
   constructor() {
@@ -18,16 +22,28 @@ export class ElevationApp {
     this.activeFace = 'front';
     this.showFigure = true;
 
-    this.bridge = new BlockBridge({
-      name: 'Elevation Builder',
-      type: 'rack_elevation',
-      onBlockLoaded: (block, meta) => this.handleBlockLoaded(block, meta),
-      onBlockChanged: () => {},
-    });
+    this.discovery = null;     // APKSoftapp.discovered() handle, once the bus answers
+    this.liveById = new Map(); // identity -> live { state, why }
 
     this.initElements();
+    this.createTable();
     this.attachEvents();
-    this.loadInitialData();
+    this.loadSampleRack();
+
+    // The CAD (cad.like.audio/host@1): load replaces the sample; request asks for the block.
+    S().inheritTheme();
+    this.host = S().connectHost({
+      editor: 'Elevation Builder',
+      blockType: BLOCK_TYPE,
+      onLoad: (block, meta) => this.handleBlockLoaded(block, meta),
+      onRequest: () => ({ block: rackToBlock(this.rack), meta: rackMeta(this.rack) }),
+    });
+    this.startDiscovery();
+  }
+
+  /** The host is told of every edit; standalone there is nobody to tell. */
+  changed() {
+    this.host?.changed(rackToBlock(this.rack), rackMeta(this.rack));
   }
 
   initElements() {
@@ -50,25 +66,26 @@ export class ElevationApp {
     this.metricsBtu = document.getElementById('metrics-btu');
 
     this.previewStage = document.getElementById('preview-stage');
-    this.tableBody = document.getElementById('device-table-body');
+    this.tableHost = document.getElementById('device-table');
+    this.discoveryStatus = document.getElementById('discovery-status');
   }
 
   attachEvents() {
     this.btnOpen?.addEventListener('click', () => this.promptOpen());
     this.btnSave?.addEventListener('click', () => this.saveBlock());
-    this.btnClose?.addEventListener('click', () => this.bridge.close());
-    this.btnSyncDiscovered?.addEventListener('click', () => this.loadFromDiscoveredProject());
+    this.btnClose?.addEventListener('click', () => this.host.close());
+    this.btnSyncDiscovered?.addEventListener('click', () => this.installFromDiscovered());
 
     this.inputRackName.addEventListener('input', (e) => {
       this.rack.name = e.target.value;
       this.renderPreviewOnly();
-      this.bridge.notifyChanged();
+      this.changed();
     });
 
     this.inputTotalRu.addEventListener('change', (e) => {
       this.rack.totalRu = parseInt(e.target.value, 10) || 42;
       this.render();
-      this.bridge.notifyChanged();
+      this.changed();
     });
 
     this.selectFace.addEventListener('change', (e) => {
@@ -85,13 +102,13 @@ export class ElevationApp {
       const blanks = autoBlankFace(this.rack, this.activeFace);
       this.rack.installed.push(...blanks);
       this.render();
-      this.bridge.notifyChanged();
+      this.changed();
     });
 
     this.btnClearFillers.addEventListener('click', () => {
       this.rack.installed = this.rack.installed.filter(d => !d.isFiller);
       this.render();
-      this.bridge.notifyChanged();
+      this.changed();
     });
 
     this.btnAddDevice.addEventListener('click', () => {
@@ -108,45 +125,51 @@ export class ElevationApp {
         isFiller: false,
       });
       this.render();
-      this.bridge.notifyChanged();
+      this.changed();
     });
   }
 
   findNextAvailableRu(desiredHeight = 1) {
-    const occupied = new Set();
-    this.rack.installed.forEach(d => {
-      if ((d.face || 'front') === this.activeFace) {
-        for (let u = d.startRu; u < d.startRu + d.ru; u++) occupied.add(u);
-      }
-    });
-    for (let u = 1; u <= (this.rack.totalRu - desiredHeight + 1); u++) {
-      let fits = true;
-      for (let h = 0; h < desiredHeight; h++) {
-        if (occupied.has(u + h)) { fits = false; break; }
-      }
-      if (fits) return u;
-    }
-    return 1;
+    return nextFreeRu(this.rack, this.activeFace, desiredHeight) || 1;
   }
 
-  loadInitialData() {
-    this.loadFromDiscoveredProject().catch(() => {
-      this.loadSampleRack();
-    });
-  }
-
-  async loadFromDiscoveredProject() {
+  /** What the bus knows, through APKSoftapp; the kinds offered are config/discovery.json's. */
+  async startDiscovery() {
+    let kinds = [];
     try {
-      const data = await this.bridge.fetchDiscoveredProject();
-      if (data && (data.racks || data.rackElevation || data.equipmentRacks)) {
-        const racks = data.racks || data.rackElevation || data.equipmentRacks;
-        if (Array.isArray(racks) && racks.length > 0) {
-          this.handleBlockLoaded(racks[0], { title: racks[0].name });
-          return;
-        }
-      }
-    } catch (_) {}
-    this.loadSampleRack();
+      const res = await fetch('./config/discovery.json', { cache: 'no-store' });
+      if (res.ok) kinds = (await res.json()).kinds || [];
+    } catch (_) { /* no config: every kind */ }
+    const d = await S().discovered({
+      kinds,
+      onChange: (things) => this.takeDiscovered(things),
+    });
+    this.discovery = d.ok ? d : null;
+    if (!d.ok) this.sayDiscovery(d.reason, 'dead');
+    else this.takeDiscovered(d.things());
+  }
+
+  takeDiscovered(things) {
+    this.liveById = new Map(things.map((t) => [t.mac || t.serial || t.agent, t.live]));
+    this.sayDiscovery(`${things.length} discovered on the bus`, things.length ? 'good' : 'kinda');
+    this.renderTable();
+  }
+
+  sayDiscovery(text, state) {
+    if (!this.discoveryStatus) return;
+    this.discoveryStatus.textContent = text;
+    this.discoveryStatus.setAttribute('data-apk-state', state);
+  }
+
+  installFromDiscovered() {
+    if (!this.discovery) return;
+    const added = installDiscovered(this.rack, this.discovery.things(), this.activeFace);
+    this.sayDiscovery(added.length
+      ? `Installed ${added.length} discovered device(s) at 1 RU each: set their real height.`
+      : 'Every discovered device is already in this rack (or the face is full).', 'kinda');
+    if (!added.length) return;
+    this.render();
+    this.changed();
   }
 
   loadSampleRack() {
@@ -172,41 +195,15 @@ export class ElevationApp {
 
   handleBlockLoaded(block, meta = {}) {
     if (!block) return;
-    this.rack.id = block.id || this.rack.id;
-    this.rack.name = block.name || this.rack.name;
-    this.rack.room = block.room || this.rack.room;
-    this.rack.totalRu = block.totalRu || block.heightU || this.rack.totalRu;
-    if (Array.isArray(block.installed)) {
-      this.rack.installed = block.installed;
-    } else if (Array.isArray(block.devices)) {
-      this.rack.installed = block.devices.map((d, i) => ({
-        id: d.id || `dev_${i}`,
-        name: d.name || d.label || 'Device',
-        startRu: d.startRu || d.uPosition || 1,
-        ru: d.ru || d.uHeight || 1,
-        face: d.face || 'front',
-        category: d.category || 'Audio',
-        powerW: d.powerW || 0,
-        btuHr: d.btuHr || 0,
-      }));
-    }
+    this.rack = rackFromBlock(block, this.rack);
+    const tag = document.getElementById('block-tag');
+    if (tag) tag.textContent = meta.title || meta.blockName || meta.name || 'RACK ELEVATION BLOCK';
     this.render();
   }
 
+  /** Save: into the drawing inside the CAD, a .json download standalone. */
   saveBlock() {
-    const block = {
-      type: 'rack_elevation',
-      id: this.rack.id,
-      name: this.rack.name,
-      room: this.rack.room,
-      totalRu: this.rack.totalRu,
-      installed: this.rack.installed,
-      timestamp: new Date().toISOString(),
-    };
-    this.bridge.saveBlock(block, {
-      title: `${this.rack.name} (${this.rack.totalRu} RU)`,
-      filename: `elevation_${this.rack.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-    });
+    this.host.save(rackToBlock(this.rack), rackMeta(this.rack));
   }
 
   render() {
@@ -230,61 +227,50 @@ export class ElevationApp {
     this.metricsBtu.textContent = `${btu.toLocaleString()} BTU/hr`;
   }
 
-  renderTable() {
-    this.tableBody.innerHTML = '';
-    const filtered = this.rack.installed.filter(d => (d.face || 'front') === this.activeFace);
-    // Sort descending by startRu (top of rack to bottom)
-    filtered.sort((a, b) => (b.startRu || 0) - (a.startRu || 0));
-
-    filtered.forEach((dev) => {
-      const globalIdx = this.rack.installed.indexOf(dev);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="col-idx"><input type="number" class="cell-input text-center" data-idx="${globalIdx}" data-field="startRu" value="${dev.startRu}"></td>
-        <td class="col-idx"><input type="number" class="cell-input text-center" data-idx="${globalIdx}" data-field="ru" value="${dev.ru}"></td>
-        <td><input type="text" class="cell-input" data-idx="${globalIdx}" data-field="name" value="${dev.name}"></td>
-        <td>
-          <select class="cell-input" data-idx="${globalIdx}" data-field="category">
-            <option value="Audio" ${dev.category === 'Audio' ? 'selected' : ''}>Audio</option>
-            <option value="Network" ${dev.category === 'Network' ? 'selected' : ''}>Network</option>
-            <option value="Power" ${dev.category === 'Power' ? 'selected' : ''}>Power</option>
-            <option value="Compute" ${dev.category === 'Compute' ? 'selected' : ''}>Compute</option>
-            <option value="Infrastructure" ${dev.category === 'Infrastructure' ? 'selected' : ''}>Infrastructure</option>
-            <option value="Filler" ${dev.category === 'Filler' ? 'selected' : ''}>Filler</option>
-          </select>
-        </td>
-        <td><input type="number" class="cell-input" data-idx="${globalIdx}" data-field="powerW" value="${dev.powerW || 0}"></td>
-        <td><input type="number" class="cell-input" data-idx="${globalIdx}" data-field="btuHr" value="${dev.btuHr || 0}"></td>
-        <td class="col-actions">
-          <button class="btn-icon btn-del-dev" data-idx="${globalIdx}" title="Delete">🗑</button>
-        </td>
-      `;
-      this.tableBody.appendChild(tr);
-    });
-
-    this.tableBody.querySelectorAll('.cell-input').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const i = parseInt(e.target.dataset.idx, 10);
-        const f = e.target.dataset.field;
-        let val = e.target.value;
-        if (f === 'startRu' || f === 'ru' || f === 'powerW' || f === 'btuHr') {
-          val = parseInt(val, 10) || 0;
-        }
-        this.rack.installed[i][f] = val;
+  createTable() {
+    const live = (identity) => {
+      const span = document.createElement('span');
+      const l = identity ? this.liveById.get(identity) : null;
+      span.className = 'live-state';
+      span.setAttribute('data-apk-state', l ? l.state : (identity ? 'dead' : ''));
+      span.textContent = identity ? (l ? `${l.state} · ${l.why || ''}` : 'dead · not on the bus') : '';
+      span.title = identity || '';
+      return span;
+    };
+    this.table = window.APKTable.create(this.tableHost, {
+      id: 'elevation-installed',
+      columns: [
+        { key: 'startRu', label: 'Start RU', type: 'number' },
+        { key: 'ru', label: 'RU Ht', type: 'number' },
+        { key: 'name', label: 'Device Label / Model' },
+        { key: 'category', label: 'Category', type: 'select', options: CATEGORIES },
+        { key: 'powerW', label: 'Power (Watts)', type: 'number' },
+        { key: 'btuHr', label: 'Thermal (BTU/hr)', type: 'number' },
+        { key: 'identity', label: 'Live', render: (v) => live(v) },
+      ],
+      rows: [],
+      onEdit: () => {
         this.renderMetrics();
         this.renderPreviewOnly();
-        this.bridge.notifyChanged();
-      });
-    });
-
-    this.tableBody.querySelectorAll('.btn-del-dev').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const i = parseInt(e.target.dataset.idx, 10);
-        this.rack.installed.splice(i, 1);
+        this.changed();
+      },
+      onDelete: (i, row) => {
+        const at = this.rack.installed.indexOf(row);
+        if (at >= 0) this.rack.installed.splice(at, 1);
         this.render();
-        this.bridge.notifyChanged();
-      });
+        this.changed();
+      },
+      empty: 'Nothing installed on this face.',
     });
+  }
+
+  /** The rows are the installed devices themselves (top of rack first): an edit lands on the rack. */
+  renderTable() {
+    if (!this.table) return;
+    const rows = this.rack.installed
+      .filter(d => (d.face || 'front') === this.activeFace)
+      .sort((a, b) => (b.startRu || 0) - (a.startRu || 0));
+    this.table.setRows(rows);
   }
 
   renderPreviewOnly() {

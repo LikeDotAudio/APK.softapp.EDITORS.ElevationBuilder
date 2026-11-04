@@ -6,6 +6,7 @@
   <title>Rack Elevation Builder · Standalone Block Editor</title>
   <link rel="stylesheet" href="./vendor/apk-contracts/apk-tokens.css">
   <link rel="stylesheet" href="./css/theme.css">
+  <link rel="stylesheet" href="./vendor/apk-table/apk-table.css">
   <style>
     .elevation-container {
       display: grid;
@@ -128,58 +129,13 @@
       overflow: auto;
     }
 
-    table.device-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 11px;
-    }
+    #device-table { font-size: 11px; }
 
-    table.device-table th {
-      position: sticky;
-      top: 0;
-      background: var(--osc-bg-input);
-      color: var(--osc-text-muted);
-      padding: 6px 8px;
-      text-align: left;
-      border-bottom: 1px solid var(--osc-border-default);
-      font-weight: 600;
-      z-index: 2;
-    }
+    .discovery-status { font-size: 10px; color: var(--osc-text-muted); max-width: 260px; }
+    .discovery-status[data-apk-state="dead"], .live-state[data-apk-state="dead"] { color: var(--apk-state-dead, #ef4444); }
+    .discovery-status[data-apk-state="good"], .live-state[data-apk-state="good"] { color: var(--apk-state-good, #22c55e); }
+    .discovery-status[data-apk-state="kinda"], .live-state[data-apk-state="kinda"] { color: var(--apk-state-kinda, #eab308); }
 
-    table.device-table td {
-      padding: 2px 4px;
-      border-bottom: 1px solid var(--osc-border-default);
-    }
-
-    .cell-input {
-      width: 100%;
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--osc-text-primary);
-      padding: 4px 6px;
-      font-size: 11px;
-      border-radius: 2px;
-      font-family: inherit;
-    }
-
-    .cell-input:focus {
-      background: var(--osc-bg-input);
-      border-color: var(--osc-accent-primary);
-      outline: none;
-    }
-
-    .text-center {
-      text-align: center;
-    }
-
-    .col-idx {
-      width: 55px;
-    }
-
-    .col-actions {
-      width: 45px;
-      text-align: center;
-    }
   </style>
 </head>
 <body class="theme-deep-horizon">
@@ -190,7 +146,8 @@
       <span class="window-pill" id="block-tag">STANDALONE BLOCK EDITOR</span>
     </div>
     <div class="window-actions">
-      <button class="btn btn-secondary" id="btn-sync-discovered" title="Load live rack from Discovered Project">
+      <span class="discovery-status" id="discovery-status" role="status"></span>
+      <button class="btn btn-secondary" id="btn-sync-discovered" title="Install what the bus has discovered (and is not in this rack yet)">
         <span class="btn-icon">⚡</span> Discovered
       </button>
       <button class="btn btn-secondary" id="btn-open" title="Open block JSON">
@@ -284,24 +241,15 @@
         </div>
       </div>
       <div class="data-table-container">
-        <table class="device-table">
-          <thead>
-            <tr>
-              <th class="col-idx">Start RU</th>
-              <th class="col-idx">RU Ht</th>
-              <th>Device Label / Model</th>
-              <th>Category</th>
-              <th>Power (Watts)</th>
-              <th>Thermal (BTU/hr)</th>
-              <th class="col-actions">Act</th>
-            </tr>
-          </thead>
-          <tbody id="device-table-body"></tbody>
-        </table>
+        <div id="device-table"></div>
       </div>
     </section>
   </div>
 
+  <script src="./vendor/apk-contracts/apk-contracts.global.js"></script>
+  <script src="/FrontEnd/shared/apk-bus.js"></script>
+  <script src="./vendor/apk-softapp/apk-softapp.js"></script>
+  <script src="./vendor/apk-table/apk-table.js"></script>
   <script type="module" src="./js/elevationApp.js"></script>
 </body>
 </html>

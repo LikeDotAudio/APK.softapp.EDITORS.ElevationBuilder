@@ -1,0 +1,105 @@
+// Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+// MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+// The rack_elevation block, in and out — no DOM, no bus, so the tests drive it.
+
+export const BLOCK_TYPE = 'rack_elevation';
+export const CATEGORIES = ['Audio', 'Network', 'Power', 'Compute', 'Infrastructure', 'Filler', 'Discovered'];
+
+/** A rack from a block (the CAD's toEditor.load, or an opened .json); `rack` is what stays when the block says nothing. */
+export function rackFromBlock(block, rack = {}) {
+  const out = { ...rack, installed: Array.isArray(rack.installed) ? rack.installed : [] };
+  if (!block || typeof block !== 'object') return out;
+  out.id = block.id || out.id;
+  out.name = block.name || out.name;
+  out.room = block.room || out.room;
+  out.totalRu = block.totalRu || block.heightU || out.totalRu || 42;
+  if (Array.isArray(block.installed)) {
+    out.installed = block.installed.map((d) => ({ ...d }));
+  } else if (Array.isArray(block.devices)) {
+    out.installed = block.devices.map((d, i) => ({
+      id: d.id || `dev_${i}`,
+      name: d.name || d.label || 'Device',
+      startRu: d.startRu || d.uPosition || 1,
+      ru: d.ru || d.uHeight || 1,
+      face: d.face || 'front',
+      category: d.category || 'Audio',
+      powerW: d.powerW || 0,
+      btuHr: d.btuHr || 0,
+      ...(d.identity ? { identity: d.identity } : {}),
+    }));
+  }
+  return out;
+}
+
+/** The block this rack saves as (toCad.blockSave / blockChanged). */
+export function rackToBlock(rack, now = new Date()) {
+  return {
+    type: BLOCK_TYPE,
+    id: rack.id,
+    name: rack.name,
+    room: rack.room,
+    totalRu: rack.totalRu,
+    installed: rack.installed.map((d) => ({ ...d })),
+    timestamp: now.toISOString(),
+  };
+}
+
+export function rackMeta(rack) {
+  const name = String(rack.name || 'rack');
+  return {
+    title: `${name} (${rack.totalRu} RU)`,
+    filename: `elevation_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+  };
+}
+
+/** The lowest free RU on `face` that fits `height`, or 0 when the face is full. */
+export function nextFreeRu(rack, face, height = 1) {
+  const occupied = new Set();
+  rack.installed.forEach((d) => {
+    if ((d.face || 'front') !== face) return;
+    for (let u = d.startRu; u < d.startRu + (d.ru || 1); u++) occupied.add(u);
+  });
+  for (let u = 1; u <= rack.totalRu - height + 1; u++) {
+    let fits = true;
+    for (let h = 0; h < height; h++) if (occupied.has(u + h)) { fits = false; break; }
+    if (fits) return u;
+  }
+  return 0;
+}
+
+/** A discovered thing's identity: MAC, else serial, else the agent — never an IP. */
+export function thingIdentity(t) {
+  return (t && (t.mac || t.serial || t.agent)) || '';
+}
+
+/**
+ * Install every discovered thing (APKSoftapp.discovered().things()) that is not
+ * in the rack yet, matched by identity, in the next free RU of `face`. Its height
+ * is not known from the network, so it goes in as 1 RU for the user to set.
+ * Returns the devices added; a full face adds nothing.
+ */
+export function installDiscovered(rack, things, face) {
+  const have = new Set(rack.installed.map((d) => d.identity).filter(Boolean));
+  const added = [];
+  for (const t of things || []) {
+    const identity = thingIdentity(t);
+    if (!identity || have.has(identity)) continue;
+    const startRu = nextFreeRu(rack, face, 1);
+    if (!startRu) break;
+    const dev = {
+      id: `disc_${identity.replace(/[^\w]/g, '_')}`,
+      name: t.name || [t.vendor, t.model].filter(Boolean).join(' ') || identity,
+      startRu,
+      ru: 1,
+      face,
+      category: 'Discovered',
+      powerW: 0,
+      btuHr: 0,
+      identity,
+    };
+    rack.installed.push(dev);
+    have.add(identity);
+    added.push(dev);
+  }
+  return added;
+}

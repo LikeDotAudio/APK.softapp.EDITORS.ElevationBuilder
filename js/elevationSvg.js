@@ -19,7 +19,7 @@ const CATEGORY_COLORS = {
 
 export function buildElevationSvg(rack, options = {}) {
   const { face = 'front', showFigure = true } = options;
-  const totalRu = rack.totalRu || 42;
+  const totalRu = Number(rack.totalRu) || 42;
 
   // Rack geometry in mm (1U = 44.45mm, 19" width = 482.6mm, usable width = 450mm)
   const ruHeightMm = 44.45;
@@ -68,8 +68,8 @@ export function buildElevationSvg(rack, options = {}) {
   // Draw installed devices
   const devices = (rack.installed || []).filter(d => (d.face || 'front') === face);
   devices.forEach(dev => {
-    const startU = dev.startRu || 1;
-    const heightU = dev.ru || 1;
+    const startU = Number(dev.startRu) || 1;
+    const heightU = Number(dev.ru) || 1;
     // Y coordinate in SVG (top of device):
     const topU = startU + heightU - 1;
     const devY = rackY + (totalRu - topU) * ruHeightMm;
@@ -79,7 +79,7 @@ export function buildElevationSvg(rack, options = {}) {
 
     const colors = CATEGORY_COLORS[dev.category] || CATEGORY_COLORS.Infrastructure;
 
-    parts.push(`<g class="device-group" data-id="${dev.id}">`);
+    parts.push(`<g class="device-group" data-id="${esc(dev.id)}">`);
     parts.push(`<rect x="${devX + 1}" y="${devY + 1}" width="${devWidthMm - 2}" height="${devHeightMm - 2}" rx="2" fill="${colors.fill}" stroke="${colors.border}" stroke-width="1"/>`);
 
     // Device label and RU tag
@@ -87,7 +87,7 @@ export function buildElevationSvg(rack, options = {}) {
     parts.push(`<text x="${devX + 12}" y="${titleY}" fill="${colors.text}" font-size="9" font-weight="bold" font-family="sans-serif">${esc(dev.name)}</text>`);
 
     if (devHeightMm >= 30) {
-      parts.push(`<text x="${devX + 12}" y="${devY + devHeightMm - 8}" fill="#888888" font-size="7" font-family="monospace">${dev.powerW ? `${dev.powerW}W · ${dev.btuHr || 0} BTU/hr` : ''} · ${dev.category || ''}</text>`);
+      parts.push(`<text x="${devX + 12}" y="${devY + devHeightMm - 8}" fill="#888888" font-size="7" font-family="monospace">${dev.powerW ? `${Number(dev.powerW) || 0}W · ${Number(dev.btuHr) || 0} BTU/hr` : ''} · ${esc(dev.category || '')}</text>`);
     }
 
     parts.push(`<text x="${devX + devWidthMm - 12}" y="${titleY}" fill="#888888" font-size="8" font-weight="bold" text-anchor="end" font-family="monospace">${heightU}U</text>`);
@@ -111,7 +111,7 @@ export function buildElevationSvg(rack, options = {}) {
   }
 
   // Header Title
-  parts.push(`<text x="${rackX + rackTotalWidthMm / 2}" y="${marginMm}" fill="#f4f4f5" font-size="12" font-weight="bold" text-anchor="middle" font-family="sans-serif">${esc(rack.name || 'EQUIPMENT RACK')} · ${face.toUpperCase()} ELEVATION (${totalRu} RU)</text>`);
+  parts.push(`<text x="${rackX + rackTotalWidthMm / 2}" y="${marginMm}" fill="#f4f4f5" font-size="12" font-weight="bold" text-anchor="middle" font-family="sans-serif">${esc(rack.name || 'EQUIPMENT RACK')} · ${esc(String(face).toUpperCase())} ELEVATION (${totalRu} RU)</text>`);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSvgWidth} ${totalSvgHeight}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">`
     + parts.join('')
