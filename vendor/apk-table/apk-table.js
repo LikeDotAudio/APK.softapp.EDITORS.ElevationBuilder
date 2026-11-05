@@ -454,22 +454,45 @@
         var sortKey = null, sortDir = 1, query = '', selected = -1, quiet = false, observer = null;
         var bar = opts.bar || null, search = opts.search || null, count = opts.count || null;
 
-        var headRows = thead ? childrenTagged(thead, 'TR') : [];
-        var heads = headRows.length ? cellsOf(headRows[headRows.length - 1]) : [];
-        var spanned = heads.some(function (th) { return (th.colSpan || 1) > 1; });
-        var seen = {};
-        var columns = heads.map(function (th, i) {
-            var label = text(th.getAttribute('data-label') || th.textContent).trim();
-            var key = th.getAttribute('data-key') || slug(label, i);
-            if (seen[key]) key = key + '-' + i;
-            seen[key] = true;
-            return { key: key, label: label, type: 'text', th: th };
-        });
-        if (!columns.length) {
-            var first = childrenTagged(tbody, 'TR')[0];
-            cellsOf(first || { children: [] }).forEach(function (_, i) { columns.push({ key: 'col' + i, label: '', type: 'text', th: null }); });
+        var heads = [], columns = [], sortable = false;
+
+        // The header is read, not declared: a page may write its <thead> after
+        // (or long after) the table is adopted, and every rewrite is re-read.
+        function readHead() {
+            var headRows = thead ? childrenTagged(thead, 'TR') : [];
+            heads = headRows.length ? cellsOf(headRows[headRows.length - 1]) : [];
+            var spanned = heads.some(function (th) { return (th.colSpan || 1) > 1; });
+            var seen = {};
+            columns = heads.map(function (th, i) {
+                var label = text(th.getAttribute('data-label') || th.textContent).trim();
+                var key = th.getAttribute('data-key') || slug(label, i);
+                if (seen[key]) key = key + '-' + i;
+                seen[key] = true;
+                return { key: key, label: label, type: 'text', th: th };
+            });
+            if (!columns.length) {
+                var first = childrenTagged(tbody, 'TR').filter(function (tr) { return cellsOf(tr).length > 1; })[0];
+                cellsOf(first || { children: [] }).forEach(function (_, i) { columns.push({ key: 'col' + i, label: '', type: 'text', th: null }); });
+            }
+            sortable = opts.sortable !== false && heads.length > 0 && !spanned;
+            if (sortable) bindHeads();
         }
-        var sortable = opts.sortable !== false && heads.length > 0 && !spanned;
+
+        function bindHeads() {
+            columns.forEach(function (c) {
+                if (!c.th || c.th.getAttribute('data-apk-nosort') !== null) return;
+                c.th.__apkKey = c.key;
+                if (c.th.__apkBound) return;
+                c.th.__apkBound = true;
+                c.th.classList.add('apk-sortable');
+                if (!c.th.title) c.th.title = 'Sort by ' + c.label;
+                var th = c.th;
+                th.addEventListener('click', function () {
+                    var k = th.__apkKey;
+                    handle.sort(k, sortKey === k && sortDir > 0 ? 'desc' : 'asc');
+                });
+            });
+        }
 
         function emit(action, detail) {
             var d = { table: id, action: action };
@@ -567,18 +590,7 @@
             quiet = false;
         }
 
-        function refresh() { stamp(); apply(); }
-
-        if (sortable) {
-            columns.forEach(function (c) {
-                if (!c.th || c.th.getAttribute('data-apk-nosort') !== null) return;
-                c.th.classList.add('apk-sortable');
-                if (!c.th.title) c.th.title = 'Sort by ' + c.label;
-                c.th.addEventListener('click', function () {
-                    handle.sort(c.key, sortKey === c.key && sortDir > 0 ? 'desc' : 'asc');
-                });
-            });
-        }
+        function refresh() { if (!columns.length) readHead(); stamp(); apply(); }
 
         var handle = {
             id: id,
@@ -653,9 +665,11 @@
         if (root.MutationObserver) {
             observer = new root.MutationObserver(function () { if (!quiet) refresh(); });
             observer.observe(tbody, { childList: true });
+            if (thead) new root.MutationObserver(function () { readHead(); apply(); }).observe(thead, { childList: true, subtree: true });
         }
 
         registry.set(id, handle);
+        readHead();
         refresh();
         return handle;
     }
@@ -671,11 +685,12 @@
      *  inner HTML, exactly as the page would have written it (escaping its
      *  values is still the page's job). Insert it, then APKTable.scan(container)
      *  (or let the observer find it) and the real table stands in its place.
-     *  opts: id, className, style, tableId, headId, bodyId, sortable, toolbar. */
+     *  opts: id, className, style, tableId, headId, bodyId, bodyClass, sortable,
+     *  toolbar. */
     function markup(opts) {
         opts = opts || {};
         var o = {};
-        ['id', 'className', 'style', 'tableId', 'headId', 'bodyId', 'sortable', 'toolbar', 'searchPlaceholder'].forEach(function (k) {
+        ['id', 'className', 'style', 'tableId', 'headId', 'bodyId', 'bodyClass', 'sortable', 'toolbar', 'searchPlaceholder'].forEach(function (k) {
             if (opts[k] !== undefined) o[k] = opts[k];
         });
         var s = '<div class="apk-table-host" data-apk-table-host="' + attr(o.id || '') + '" data-apk-opts="' + attr(JSON.stringify(o)) + '">';
@@ -720,6 +735,7 @@
             var part = el(tags[p]);
             if (p === 'body' && o.bodyId) part.setAttribute('id', o.bodyId);
             if (p === 'head' && o.headId) part.setAttribute('id', o.headId);
+            if (p === 'body' && o.bodyClass) part.className = o.bodyClass;
             if (parts[p]) moveContent(parts[p], part);
             table.appendChild(part);
         });
