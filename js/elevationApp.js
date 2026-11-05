@@ -25,6 +25,28 @@ export class ElevationApp {
     this.discovery = null;     // APKSoftapp.discovered() handle, once the bus answers
     this.liveById = new Map(); // identity -> live { state, why }
 
+    S().describe({
+      name: 'Elevation Builder',
+      does: 'An EIA-310 19-inch rack elevation (front or rear): what is installed at which RU, with total RU used, power (W) and heat (BTU/hr).',
+      inputs: [
+        { name: 'Rack elevation block', from: 'the CAD (when opened from a drawing), or a .json file via Open', kind: 'file' },
+        { name: 'Discovered devices', from: 'the bus: things scanners and agents found (kinds in config/discovery.json); each row shows its live state', kind: 'bus' },
+      ],
+      outputs: [
+        { name: 'Rack elevation block', to: 'the CAD on Save & Return and on every edit; standalone Save downloads a .json', kind: 'file' },
+        { name: 'Printed elevation', to: 'the printer or a PDF (Print / PDF)' },
+      ],
+      controls: [
+        { name: 'Rack name / Total RU / Face', how: 'name the rack, set its height, show front or rear' },
+        { name: 'Scale figure', how: 'show or hide the human figure for scale' },
+        { name: '+ Install Device', how: 'adds a 1 RU device at the next free slot; edit start RU, height, label, category, W, BTU in the schedule' },
+        { name: 'Auto-Blank Empty Slots / Clear Filler Blanks', how: 'fill every gap on this face with blanks, or remove them' },
+        { name: 'Discovered', how: 'install what the bus found (1 RU each) that is not in this rack yet' },
+        { name: 'Open / Save & Return / Close / Print', how: 'header and preview buttons' },
+      ],
+      problems: ['bad_json', 'bad_input', 'file_unreadable', 'not_in_cad', 'bus_missing'],
+    });
+
     this.initElements();
     this.createTable();
     this.attachEvents();
@@ -145,6 +167,7 @@ export class ElevationApp {
       onChange: (things) => this.takeDiscovered(things),
     });
     this.discovery = d.ok ? d : null;
+    this.discoveryProblem = d.ok ? null : d.problem;
     if (!d.ok) this.sayDiscovery(d.reason, 'dead');
     else this.takeDiscovered(d.things());
   }
@@ -162,7 +185,14 @@ export class ElevationApp {
   }
 
   installFromDiscovered() {
-    if (!this.discovery) return;
+    if (!this.discovery) {
+      // the button did nothing before: say why, and Retry reads the bus again
+      S().showProblem(this.discoveryProblem || 'bus_missing', {
+        subject: 'Discovered devices',
+        onRetry: () => this.startDiscovery().then(() => { if (this.discovery) this.installFromDiscovered(); }),
+      });
+      return;
+    }
     const added = installDiscovered(this.rack, this.discovery.things(), this.activeFace);
     this.sayDiscovery(added.length
       ? `Installed ${added.length} discovered device(s) at 1 RU each: set their real height.`
@@ -289,12 +319,21 @@ export class ElevationApp {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
+      reader.onerror = () => S().showProblem('file_unreadable', {
+        subject: file.name, detail: reader.error && reader.error.message, onRetry: () => this.promptOpen(),
+      });
       reader.onload = (re) => {
         try {
           const parsed = JSON.parse(re.target.result);
+          if (!parsed || typeof parsed !== 'object') throw new TypeError('the file holds no rack object');
           this.handleBlockLoaded(parsed, { title: file.name });
         } catch (err) {
-          alert('Invalid JSON rack block');
+          S().showProblem(err instanceof SyntaxError ? 'bad_json' : 'bad_input', {
+            subject: file.name,
+            detail: err.message,
+            fix: ['Open a rack elevation block .json (Save & Return outside the CAD downloads one).'],
+            onRetry: () => this.promptOpen(),
+          });
         }
       };
       reader.readAsText(file);
