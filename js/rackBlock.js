@@ -134,14 +134,27 @@ export function categoryOfPart(bim = {}) {
 }
 
 /**
+ * Why a BIM part cannot go in a rack unit, or '' when it can (ROAD-3601). A Concepts part — a flow
+ * block, a schematic symbol, an adapter idea: BIM's non-physical category, which IFC maps to no
+ * element type — has no metal to occupy a rack unit, so it is refused rather than racked as Audio.
+ */
+export function notRackable(part = {}) {
+  if (String(part.category || '').trim().toLowerCase() !== 'concepts') return '';
+  const name = part.name || [part.manufacturer, part.model].filter(Boolean).join(' ') || part.id || 'This part';
+  return `${name} is a Concept, not a physical device: it cannot be racked. Pick the device that does the job.`;
+}
+
+/**
  * 📚 A part picked from the BIM library (ROAD-3572: {bim, ref}, `full` the part the ref
  * resolves to when it was read) installed in the next free RU of `face` that fits its
  * height: its name, its rack units, power and weight from the part, and its bimId and bimRef
- * {part, url, rev}. → the device, or null when the face has no room for it.
+ * {part, url, rev}. → the device, or null when the face has no room for it or the part is not
+ * rackable (notRackable says why).
  */
 export function installFromLibrary(rack, item, face, full = null) {
   const bim = (item && item.bim) || {};
   const part = Object.assign({}, bim, full || {});
+  if (notRackable(part)) return null;   // the caller says why (notRackable); a Concept is never racked
   const ru = Math.max(1, Math.round(Number(part.ru || (part.physical && part.physical.rack_units)) || 1));
   const startRu = nextFreeRu(rack, face, ru);
   if (!startRu) return null;

@@ -4,7 +4,7 @@
 import { buildElevationSvg } from './elevationSvg.js';
 import { autoBlankFace } from './autoBlank.js';
 import {
-  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered, installFromLibrary,
+  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered, installFromLibrary, notRackable,
 } from './rackBlock.js';
 import { libraryButton, acceptLibraryDrops } from './bimLibrary.js';
 import { rackRollup, metricText } from './rackRollup.js';
@@ -166,11 +166,16 @@ export class ElevationApp {
   /** Install parts picked from the library, each at the next free RU that fits it. */
   async installParts(items) {
     let added = 0;
+    const refused = [];
     for (const item of items) {
       const full = await this.fullPart(item);
+      const why = notRackable(Object.assign({}, item && item.bim, full || {}));
+      if (why) { refused.push(why); continue; }   // ROAD-3601: a Concept is refused, never racked as Audio
       if (installFromLibrary(this.rack, item, this.activeFace, full)) added += 1;
     }
-    if (added < items.length) this.sayDiscovery(`No room on the ${this.activeFace} face for ${items.length - added} part(s).`, 'kinda');
+    const noRoom = items.length - added - refused.length;
+    const say = [...refused, ...(noRoom > 0 ? [`No room on the ${this.activeFace} face for ${noRoom} part(s).`] : [])];
+    if (say.length) this.sayDiscovery(say.join(' '), refused.length ? 'dead' : 'kinda');
     if (!added) return;
     this.render();
     this.changed();
@@ -213,6 +218,7 @@ export class ElevationApp {
   sayDiscovery(text, state) {
     if (!this.discoveryStatus) return;
     this.discoveryStatus.textContent = text;
+    this.discoveryStatus.title = text;   // the line is narrow: the whole message on hover
     this.discoveryStatus.setAttribute('data-apk-state', state);
   }
 

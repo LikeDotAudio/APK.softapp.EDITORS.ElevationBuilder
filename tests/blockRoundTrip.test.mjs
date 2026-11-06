@@ -82,3 +82,17 @@ test('a library part is racked under its own category — a meter is Test & Meas
   assert.equal(categoryOfPart({ category: 'Audio', class: 'Mixer' }), 'Audio');
   for (const c of ['Test & Measurement', 'Video', 'Control']) assert.ok(CATEGORIES.includes(c));
 });
+
+test('a Concepts part is refused with a reason, never racked as Audio (ROAD-3601)', async () => {
+  const { notRackable, installFromLibrary } = await import('../js/rackBlock.js');
+  const concept = { id: 'concept/adapter-mux', name: 'Container Mux (Adapter)', category: 'Concepts', class: 'Concept · Adapter' };
+  assert.match(notRackable(concept), /Container Mux \(Adapter\) is a Concept, not a physical device: it cannot be racked/);
+  assert.equal(notRackable({ category: 'Audio', class: 'Mixer' }), '');
+  assert.equal(notRackable({}), '');
+  const rack = rackFromBlock({ totalRu: 4 });
+  assert.equal(installFromLibrary(rack, { bim: concept, ref: { part: concept.id } }, 'front'), null);
+  assert.equal(rack.installed.length, 0, 'nothing installed');
+  // the full part the ref resolves to decides too: a pick whose block omits the category
+  assert.equal(installFromLibrary(rack, { bim: { id: concept.id } }, 'front', { category: 'Concepts' }), null);
+  assert.ok(installFromLibrary(rack, { bim: { id: 'x/amp', category: 'Audio' } }, 'front'), 'a physical part still racks');
+});
