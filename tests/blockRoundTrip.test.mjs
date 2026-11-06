@@ -73,3 +73,12 @@ test('discovered things install once each, keyed by MAC/serial, never by IP', ()
   assert.equal(added[1].name, 'ACME X1');
   assert.equal(installDiscovered(rack, things, 'front').length, 0, 'a second sync adds nothing');
 });
+
+test('a library part is racked under its own category — a meter is Test & Measurement, not Audio (ROAD-3597)', async () => {
+  const { categoryOfPart, CATEGORIES } = await import('../js/rackBlock.js');
+  assert.equal(categoryOfPart({ category: 'Test & Measurement', class: 'Digital Multimeter' }), 'Test & Measurement');
+  assert.equal(categoryOfPart({ category: 'Video', class: 'Camera' }), 'Video');
+  assert.equal(categoryOfPart({ category: 'Network', class: 'Switch' }), 'Network');
+  assert.equal(categoryOfPart({ category: 'Audio', class: 'Mixer' }), 'Audio');
+  for (const c of ['Test & Measurement', 'Video', 'Control']) assert.ok(CATEGORIES.includes(c));
+});

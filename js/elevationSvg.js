@@ -11,6 +11,9 @@ const esc = (s) =>
 const CATEGORY_COLORS = {
   Network: { fill: '#1E3A5F', border: '#3B82F6', text: '#93C5FD' },
   Audio: { fill: '#144133', border: '#10B981', text: '#A7F3D0' },
+  Video: { fill: '#3F2A12', border: '#F59E0B', text: '#FDE68A' },
+  Control: { fill: '#123B40', border: '#14B8A6', text: '#99F6E4' },
+  'Test & Measurement': { fill: '#3A1E3F', border: '#EC4899', text: '#FBCFE8' },
   Power: { fill: '#4C1D24', border: '#EF4444', text: '#FECACA' },
   Compute: { fill: '#3B2456', border: '#A855F7', text: '#E9D5FF' },
   Infrastructure: { fill: '#1E293B', border: '#64748B', text: '#CBD5E1' },

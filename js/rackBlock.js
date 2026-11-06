@@ -3,7 +3,7 @@
 // The rack_elevation block, in and out — no DOM, no bus, so the tests drive it.
 
 export const BLOCK_TYPE = 'rack_elevation';
-export const CATEGORIES = ['Audio', 'Network', 'Power', 'Compute', 'Infrastructure', 'Filler', 'Discovered'];
+export const CATEGORIES = ['Audio', 'Video', 'Network', 'Control', 'Test & Measurement', 'Power', 'Compute', 'Infrastructure', 'Filler', 'Discovered'];
 
 /** A rack from a block (the CAD's toEditor.load, or an opened .json); `rack` is what stays when the block says nothing. */
 export function rackFromBlock(block, rack = {}) {
@@ -107,7 +107,10 @@ export function installDiscovered(rack, things, face) {
 /** The rack category a BIM part is shown under (CATEGORIES). */
 export function categoryOfPart(bim = {}) {
   const c = `${bim.category || ''} ${bim.class || ''}`.toLowerCase();
+  if (/test|measure|meter|scope|analy[sz]er|generator/.test(c)) return 'Test & Measurement';
+  if (/video|camera|display|projector/.test(c)) return 'Video';
   if (/network|switch|router/.test(c)) return 'Network';
+  if (/control/.test(c)) return 'Control';
   if (/power|pdu|ups/.test(c)) return 'Power';
   if (/comput|server/.test(c)) return 'Compute';
   if (/infrastructure|patch|panel/.test(c)) return 'Infrastructure';
