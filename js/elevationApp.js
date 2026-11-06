@@ -8,6 +8,9 @@ import {
 } from './rackBlock.js';
 import { libraryButton, acceptLibraryDrops } from './bimLibrary.js';
 import { rackRollup, metricText } from './rackRollup.js';
+import { rackToIfc } from './ifc/rackToIfc.js';
+import { ifcToRack } from './ifc/ifcToRack.js';
+import { loadPartTypes } from './ifc/partTypes.js';
 
 const S = () => window.APKSoftapp;
 
@@ -25,28 +28,32 @@ export class ElevationApp {
     this.showFigure = true;
 
     this.discovery = null;     // APKSoftapp.discovered() handle, once the bus answers
+    this.partTypes = new Map(); // part id -> its .ifc text (null: the library did not answer), for Save Model
     this.liveById = new Map(); // identity -> live { state, why }
 
     S().describe({
       name: 'Elevation Builder',
       does: 'An EIA-310 19-inch rack elevation (front or rear): what is installed at which RU, with total RU used, power (W) and heat (BTU/hr).',
       inputs: [
-        { name: 'Rack elevation block', from: 'the CAD (when opened from a drawing), or a .json file via Open', kind: 'file' },
+        { name: 'Rack elevation block', from: 'the CAD (when opened from a drawing), or via Open: the block .json or its .ifc twin (APKSoftapp.openModel)', kind: 'file' },
+        { name: 'Device part types', from: 'GET /api/bim/parts/<maker>/<model>.ifc: the IFC type of each installed BIM part, embedded on Save Model', kind: 'http' },
         { name: 'Discovered devices', from: 'the bus: things scanners and agents found (kinds in config/discovery.json); each row shows its live state', kind: 'bus' },
       ],
       outputs: [
         { name: 'Rack elevation block', to: 'the CAD on Save & Return and on every edit; standalone Save downloads a .json', kind: 'file' },
+        { name: 'Model + .ifc twin', to: '🏗 Save Model: <rack>.json and <rack>.ifc (IFC4X3_ADD2: an EquipmentRack assembly, its IfcFurniture frame, every device at its RU typed by its BIM part, the load / heat / weight roll-ups)', kind: 'file' },
         { name: 'Printed elevation', to: 'the printer or a PDF (Print / PDF)' },
       ],
       controls: [
         { name: 'Rack name / Total RU / Face', how: 'name the rack, set its height, show front or rear' },
+        { name: 'Empty Frame Weight / Static Load Rating (kg)', how: 'the frame counts in the rack\'s weight, not its payload; the payload is checked against the rating (rack_overload)' },
         { name: 'Scale figure', how: 'show or hide the human figure for scale' },
         { name: '📚 Library', how: 'install a device from the BIM library (Ctrl+Shift+L, or drag a part onto the rack) at the next free slot that fits its rack units; it keeps its bimId and bimRef; edit start RU, label, W, BTU in the schedule' },
         { name: 'Auto-Blank Empty Slots / Clear Filler Blanks', how: 'fill every gap on this face with blanks, or remove them' },
         { name: 'Discovered', how: 'install what the bus found (1 RU each) that is not in this rack yet' },
-        { name: 'Open / Save & Return / Close / Print', how: 'header and preview buttons' },
+        { name: 'Open / Save Model / Save & Return / Close / Print', how: 'header and preview buttons; Open takes the .json or the .ifc, Save Model writes both' },
       ],
-      problems: ['bad_json', 'bad_input', 'file_unreadable', 'not_in_cad', 'bus_missing'],
+      problems: ['bad_json', 'bad_input', 'file_unreadable', 'not_in_cad', 'bus_missing', 'save_failed'],
     });
 
     this.initElements();
@@ -73,6 +80,9 @@ export class ElevationApp {
   initElements() {
     this.btnOpen = document.getElementById('btn-open');
     this.btnSave = document.getElementById('btn-save');
+    this.btnSaveModel = document.getElementById('btn-save-model');
+    this.inputFrameKg = document.getElementById('input-frame-kg');
+    this.inputLoadRating = document.getElementById('input-load-rating');
     this.btnClose = document.getElementById('btn-close');
     this.btnSyncDiscovered = document.getElementById('btn-sync-discovered');
 
@@ -98,6 +108,17 @@ export class ElevationApp {
   attachEvents() {
     this.btnOpen?.addEventListener('click', () => this.promptOpen());
     this.btnSave?.addEventListener('click', () => this.saveBlock());
+    this.btnSaveModel?.addEventListener('click', () => this.saveModel());
+    // the frame: its own weight and its static load rating (js/rackRollup.js; empty = unknown)
+    for (const [input, key] of [[this.inputFrameKg, 'frameWeightKg'], [this.inputLoadRating, 'loadRatingKg']]) {
+      input?.addEventListener('change', (e) => {
+        const n = Number(e.target.value);
+        if (e.target.value === '' || !Number.isFinite(n) || n < 0) delete this.rack[key];
+        else this.rack[key] = n;
+        this.renderMetrics();
+        this.changed();
+      });
+    }
     this.btnClose?.addEventListener('click', () => this.host.close());
     this.btnSyncDiscovered?.addEventListener('click', () => this.installFromDiscovered());
 
@@ -227,6 +248,16 @@ export class ElevationApp {
     this.render();
   }
 
+  /** Save Model: the rack's block .json AND its .ifc twin, both or neither (APKSoftapp.saveModel). */
+  async saveModel() {
+    const r = await S().saveModel(this.rack, {
+      name: rackMeta(this.rack).filename,
+      toJson: (rack) => rackToBlock(rack),
+      toIfc: async (rack) => rackToIfc(rack, { types: (await loadPartTypes(rack, this.partTypes)).types }),
+    });
+    if (!r.ok && !r.cancelled && r.problem) S().showProblem(r.problem);
+  }
+
   /** Save: into the drawing inside the CAD, a .json download standalone. */
   saveBlock() {
     this.host.save(rackToBlock(this.rack), rackMeta(this.rack));
@@ -235,6 +266,8 @@ export class ElevationApp {
   render() {
     this.inputRackName.value = this.rack.name;
     this.inputTotalRu.value = this.rack.totalRu;
+    if (this.inputFrameKg) this.inputFrameKg.value = this.rack.frameWeightKg ?? '';
+    if (this.inputLoadRating) this.inputLoadRating.value = this.rack.loadRatingKg ?? '';
     this.renderMetrics();
     this.renderTable();
     this.renderPreviewOnly();
@@ -313,34 +346,26 @@ export class ElevationApp {
     this.previewStage.innerHTML = svg;
   }
 
-  promptOpen() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onerror = () => S().showProblem('file_unreadable', {
-        subject: file.name, detail: reader.error && reader.error.message, onRetry: () => this.promptOpen(),
-      });
-      reader.onload = (re) => {
-        try {
-          const parsed = JSON.parse(re.target.result);
-          if (!parsed || typeof parsed !== 'object') throw new TypeError('the file holds no rack object');
-          this.handleBlockLoaded(parsed, { title: file.name });
-        } catch (err) {
-          S().showProblem(err instanceof SyntaxError ? 'bad_json' : 'bad_input', {
-            subject: file.name,
-            detail: err.message,
-            fix: ['Open a rack elevation block .json (Save & Return outside the CAD downloads one).'],
-            onRetry: () => this.promptOpen(),
-          });
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
+  /** Open: the block .json or its .ifc twin (APKSoftapp.openModel), into this editor. */
+  async promptOpen() {
+    const o = await S().openModel({
+      fromIfc: (text) => rackToBlock(ifcToRack(text).rack),
+      fromJson: (data) => {
+        if (!data || typeof data !== 'object') throw new TypeError('the file holds no rack object');
+        return data;
+      },
+    });
+    if (!o.ok) {
+      if (!o.cancelled && o.problem) {
+        S().showProblem(o.problem, {
+          fix: ['Open a rack elevation block .json, or its .ifc twin (Save Model writes both).'],
+          onRetry: () => this.promptOpen(),
+        });
+      }
+      return;
+    }
+    this.handleBlockLoaded(o.model, { title: o.name });
+    this.changed();
   }
 }
 

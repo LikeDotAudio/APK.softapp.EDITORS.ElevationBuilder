@@ -13,7 +13,13 @@ export function rackFromBlock(block, rack = {}) {
   out.name = block.name || out.name;
   out.room = block.room || out.room;
   out.totalRu = block.totalRu || block.heightU || out.totalRu || 42;
-  for (const k of ['frameWeightKg', 'loadRatingKg']) if (block[k] != null) out[k] = block[k];   // the frame (js/rackRollup.js)
+  for (const k of ['frameWeightKg', 'loadRatingKg', 'firstUnitMm', 'usableDepthMm', 'widthMm']) if (block[k] != null) out[k] = block[k];   // the frame (js/rackRollup.js)
+  // the racks-2 reference: the bench instance this rack IS (`rack`) and the rig it is on (`rig`); an opened
+  // .json / .ifc twin carries it as `ref` (the editor's own name for it)
+  const benchRef = typeof block.rack === 'string' ? block.rack : block.ref;
+  delete out.ref; delete out.rig;   // a reference is the block's own, never carried over from the rack before
+  if (benchRef) out.ref = String(benchRef);
+  if (block.rig) out.rig = String(block.rig);
   if (Array.isArray(block.installed)) {
     out.installed = block.installed.map((d) => ({ ...d }));
   } else if (Array.isArray(block.devices)) {
@@ -32,7 +38,11 @@ export function rackFromBlock(block, rack = {}) {
   return out;
 }
 
-/** The block this rack saves as (toCad.blockSave / blockChanged). */
+/**
+ * The block this rack saves as (toCad.blockSave / blockChanged). With a bench reference it is also the racks-2
+ * reference block: `rack` names the bench instance the rack is and `rig` its rig, so the CAD's block points at
+ * the one stored rack; the rows travel with it until the bench holds them (the migration is ROAD-3582's next step).
+ */
 export function rackToBlock(rack, now = new Date()) {
   return {
     type: BLOCK_TYPE,
@@ -42,6 +52,9 @@ export function rackToBlock(rack, now = new Date()) {
     totalRu: rack.totalRu,
     ...(rack.frameWeightKg != null ? { frameWeightKg: rack.frameWeightKg } : {}),
     ...(rack.loadRatingKg != null ? { loadRatingKg: rack.loadRatingKg } : {}),
+    ...Object.fromEntries(['firstUnitMm', 'usableDepthMm', 'widthMm'].filter((k) => rack[k] != null).map((k) => [k, rack[k]])),
+    ...(rack.ref ? { rack: rack.ref } : {}),     // racks-2: the bench instance (GET /api/bim/rollup?rig=… knows it)
+    ...(rack.rig ? { rig: rack.rig } : {}),
     installed: rack.installed.map((d) => ({ ...d })),
     timestamp: now.toISOString(),
   };

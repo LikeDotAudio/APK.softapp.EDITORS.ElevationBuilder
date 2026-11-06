@@ -150,8 +150,11 @@
       <button class="btn btn-secondary" id="btn-sync-discovered" title="Install what the bus has discovered (and is not in this rack yet)">
         <span class="btn-icon">⚡</span> Discovered
       </button>
-      <button class="btn btn-secondary" id="btn-open" title="Open block JSON">
+      <button class="btn btn-secondary" id="btn-open" title="Open a rack: its .ifc twin or the block .json">
         <span class="btn-icon">📂</span> Open
+      </button>
+      <button class="btn btn-secondary" id="btn-save-model" title="Save Model: the rack as .json and its .ifc twin (IFC4X3), both or neither">
+        <span class="btn-icon">🏗</span> Save Model
       </button>
       <button class="btn btn-primary" id="btn-save" title="Save & Return modified block to caller">
         <span class="btn-icon">💾</span> Save & Return
@@ -176,6 +179,18 @@
           <option value="45">45 RU (Deep Datacenter)</option>
           <option value="48">48 RU (Tall Frame)</option>
         </select>
+      </div>
+
+      <div class="form-group">
+        <label for="input-frame-kg">Empty Frame Weight (kg)</label>
+        <input type="number" id="input-frame-kg" class="input" min="0" step="0.1" placeholder="unknown"
+          title="The rack's own weight, empty: in its total weight, not in its payload">
+      </div>
+
+      <div class="form-group">
+        <label for="input-load-rating">Static Load Rating (kg)</label>
+        <input type="number" id="input-load-rating" class="input" min="0" step="0.1" placeholder="unknown"
+          title="What the frame may carry standing (APK_Rack.StaticLoadRating): the payload is checked against it">
       </div>
 
       <div class="form-group">
