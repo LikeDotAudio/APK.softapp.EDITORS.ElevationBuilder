@@ -103,3 +103,43 @@ export function installDiscovered(rack, things, face) {
   }
   return added;
 }
+
+/** The rack category a BIM part is shown under (CATEGORIES). */
+export function categoryOfPart(bim = {}) {
+  const c = `${bim.category || ''} ${bim.class || ''}`.toLowerCase();
+  if (/network|switch|router/.test(c)) return 'Network';
+  if (/power|pdu|ups/.test(c)) return 'Power';
+  if (/comput|server/.test(c)) return 'Compute';
+  if (/infrastructure|patch|panel/.test(c)) return 'Infrastructure';
+  return 'Audio';
+}
+
+/**
+ * 📚 A part picked from the BIM library (ROAD-3572: {bim, ref}, `full` the part the ref
+ * resolves to when it was read) installed in the next free RU of `face` that fits its
+ * height: its name, its rack units and power from the part, and its bimId and bimRef
+ * {part, url, rev}. → the device, or null when the face has no room for it.
+ */
+export function installFromLibrary(rack, item, face, full = null) {
+  const bim = (item && item.bim) || {};
+  const part = Object.assign({}, bim, full || {});
+  const ru = Math.max(1, Math.round(Number(part.ru || (part.physical && part.physical.rack_units)) || 1));
+  const startRu = nextFreeRu(rack, face, ru);
+  if (!startRu) return null;
+  const watts = Number(part.power && part.power.watts) || 0;
+  const ref = item && item.ref && item.ref.part ? { part: String(item.ref.part), url: String(item.ref.url || ''), rev: String(item.ref.rev || '') } : null;
+  const dev = {
+    id: `bim_${String(bim.id || 'part').replace(/[^\w]/g, '_')}_${rack.installed.length + 1}`,
+    name: part.name || [part.manufacturer, part.model].filter(Boolean).join(' ') || bim.id,
+    startRu,
+    ru,
+    face,
+    category: categoryOfPart(part),
+    powerW: watts,
+    btuHr: Number(part.power && part.power.btu_hr) || Math.round(watts * 3.412),
+    bimId: bim.id || (ref && ref.part) || '',
+    ...(ref ? { bimRef: ref } : {}),
+  };
+  rack.installed.push(dev);
+  return dev;
+}

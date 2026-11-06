@@ -4,8 +4,9 @@
 import { buildElevationSvg } from './elevationSvg.js';
 import { autoBlankFace } from './autoBlank.js';
 import {
-  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered,
+  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered, installFromLibrary,
 } from './rackBlock.js';
+import { libraryButton, acceptLibraryDrops } from './bimLibrary.js';
 
 const S = () => window.APKSoftapp;
 
@@ -39,7 +40,7 @@ export class ElevationApp {
       controls: [
         { name: 'Rack name / Total RU / Face', how: 'name the rack, set its height, show front or rear' },
         { name: 'Scale figure', how: 'show or hide the human figure for scale' },
-        { name: '+ Install Device', how: 'adds a 1 RU device at the next free slot; edit start RU, height, label, category, W, BTU in the schedule' },
+        { name: '📚 Library', how: 'install a device from the BIM library (Ctrl+Shift+L, or drag a part onto the rack) at the next free slot that fits its rack units; it keeps its bimId and bimRef; edit start RU, label, W, BTU in the schedule' },
         { name: 'Auto-Blank Empty Slots / Clear Filler Blanks', how: 'fill every gap on this face with blanks, or remove them' },
         { name: 'Discovered', how: 'install what the bus found (1 RU each) that is not in this rack yet' },
         { name: 'Open / Save & Return / Close / Print', how: 'header and preview buttons' },
@@ -133,22 +134,30 @@ export class ElevationApp {
       this.changed();
     });
 
-    this.btnAddDevice.addEventListener('click', () => {
-      const nextU = this.findNextAvailableRu(1);
-      this.rack.installed.push({
-        id: `dev_${Date.now()}`,
-        name: 'New AV Device',
-        startRu: nextU,
-        ru: 1,
-        face: this.activeFace,
-        category: 'Audio',
-        powerW: 100,
-        btuHr: 341,
-        isFiller: false,
-      });
-      this.render();
-      this.changed();
-    });
+    // 📚 Library (ROAD-3572): every installed device is a BIM part, with its BIM reference
+    this.btnAddDevice?.replaceWith(libraryButton((items) => this.installParts(items), {
+      className: 'btn btn-primary btn-sm', title: 'Install a device from the BIM library', multiple: true }));
+    if (this.previewStage) acceptLibraryDrops(this.previewStage, (item) => this.installParts([item]));
+  }
+
+  /** Install parts picked from the library, each at the next free RU that fits it. */
+  async installParts(items) {
+    let added = 0;
+    for (const item of items) {
+      const full = await this.fullPart(item);
+      if (installFromLibrary(this.rack, item, this.activeFace, full)) added += 1;
+    }
+    if (added < items.length) this.sayDiscovery(`No room on the ${this.activeFace} face for ${items.length - added} part(s).`, 'kinda');
+    if (!added) return;
+    this.render();
+    this.changed();
+  }
+
+  /** The full part (rack units, power) the pick's ref resolves to on the live library; null elsewhere. */
+  async fullPart(item) {
+    const url = item && item.ref && item.ref.url;
+    if (!url || !/\/api\/bim\/parts\//.test(url) || item.bim.ru) return null;
+    try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch (_) { return null; }
   }
 
   findNextAvailableRu(desiredHeight = 1) {
@@ -202,24 +211,9 @@ export class ElevationApp {
     this.changed();
   }
 
+  /** An empty rack: every device comes from the BIM library, Discovered, or an opened block (ROAD-3572). */
   loadSampleRack() {
-    this.rack = {
-      id: 'rck_mdf_01',
-      name: 'RACK-01 (MDF Core)',
-      room: 'MDF',
-      totalRu: 42,
-      installed: [
-        { id: 'd1', name: '48-Port 10G Core Switch', startRu: 42, ru: 1, face: 'front', category: 'Network', powerW: 350, btuHr: 1195 },
-        { id: 'd2', name: 'Cat6A Patch Panel 01', startRu: 41, ru: 1, face: 'front', category: 'Infrastructure', powerW: 0, btuHr: 0 },
-        { id: 'd3', name: 'Cat6A Patch Panel 02', startRu: 40, ru: 1, face: 'front', category: 'Infrastructure', powerW: 0, btuHr: 0 },
-        { id: 'd4', name: 'Audio DSP Core Frame', startRu: 37, ru: 2, face: 'front', category: 'Audio', powerW: 180, btuHr: 614 },
-        { id: 'd5', name: '4x1200W Amp Channel A/B', startRu: 34, ru: 2, face: 'front', category: 'Audio', powerW: 850, btuHr: 2900 },
-        { id: 'd6', name: '4x1200W Amp Channel C/D', startRu: 32, ru: 2, face: 'front', category: 'Audio', powerW: 850, btuHr: 2900 },
-        { id: 'd7', name: 'Micro BareMetal Server Node', startRu: 20, ru: 1, face: 'front', category: 'Compute', powerW: 220, btuHr: 750 },
-        { id: 'd8', name: 'Switched PDU (8x C13)', startRu: 5, ru: 1, face: 'front', category: 'Power', powerW: 20, btuHr: 68 },
-        { id: 'd9', name: '3000VA Online Double-Conversion UPS', startRu: 1, ru: 3, face: 'front', category: 'Power', powerW: 140, btuHr: 477 },
-      ],
-    };
+    this.rack = { id: 'rck_mdf_01', name: 'RACK-01 (MDF Core)', room: 'MDF', totalRu: 42, installed: [] };
     this.render();
   }
 
