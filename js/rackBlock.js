@@ -13,6 +13,7 @@ export function rackFromBlock(block, rack = {}) {
   out.name = block.name || out.name;
   out.room = block.room || out.room;
   out.totalRu = block.totalRu || block.heightU || out.totalRu || 42;
+  for (const k of ['frameWeightKg', 'loadRatingKg']) if (block[k] != null) out[k] = block[k];   // the frame (js/rackRollup.js)
   if (Array.isArray(block.installed)) {
     out.installed = block.installed.map((d) => ({ ...d }));
   } else if (Array.isArray(block.devices)) {
@@ -39,6 +40,8 @@ export function rackToBlock(rack, now = new Date()) {
     name: rack.name,
     room: rack.room,
     totalRu: rack.totalRu,
+    ...(rack.frameWeightKg != null ? { frameWeightKg: rack.frameWeightKg } : {}),
+    ...(rack.loadRatingKg != null ? { loadRatingKg: rack.loadRatingKg } : {}),
     installed: rack.installed.map((d) => ({ ...d })),
     timestamp: now.toISOString(),
   };
@@ -120,7 +123,7 @@ export function categoryOfPart(bim = {}) {
 /**
  * 📚 A part picked from the BIM library (ROAD-3572: {bim, ref}, `full` the part the ref
  * resolves to when it was read) installed in the next free RU of `face` that fits its
- * height: its name, its rack units and power from the part, and its bimId and bimRef
+ * height: its name, its rack units, power and weight from the part, and its bimId and bimRef
  * {part, url, rev}. → the device, or null when the face has no room for it.
  */
 export function installFromLibrary(rack, item, face, full = null) {
@@ -140,6 +143,7 @@ export function installFromLibrary(rack, item, face, full = null) {
     category: categoryOfPart(part),
     powerW: watts,
     btuHr: Number(part.power && part.power.btu_hr) || Math.round(watts * 3.412),
+    ...(Number(part.physical && part.physical.weight_kg) > 0 ? { weightKg: Number(part.physical.weight_kg) } : {}),
     bimId: bim.id || (ref && ref.part) || '',
     ...(ref ? { bimRef: ref } : {}),
   };

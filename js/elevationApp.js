@@ -7,6 +7,7 @@ import {
   BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered, installFromLibrary,
 } from './rackBlock.js';
 import { libraryButton, acceptLibraryDrops } from './bimLibrary.js';
+import { rackRollup, metricText } from './rackRollup.js';
 
 const S = () => window.APKSoftapp;
 
@@ -87,6 +88,7 @@ export class ElevationApp {
     this.metricsRu = document.getElementById('metrics-ru');
     this.metricsWatts = document.getElementById('metrics-watts');
     this.metricsBtu = document.getElementById('metrics-btu');
+    this.metricsKg = document.getElementById('metrics-kg');
 
     this.previewStage = document.getElementById('preview-stage');
     this.tableHost = document.getElementById('device-table');
@@ -242,13 +244,18 @@ export class ElevationApp {
     const occupied = this.rack.installed
       .filter(d => (d.face || 'front') === this.activeFace)
       .reduce((sum, d) => sum + (d.ru || 1), 0);
-    const watts = this.rack.installed.reduce((sum, d) => sum + (d.powerW || 0), 0);
-    const btu = this.rack.installed.reduce((sum, d) => sum + (d.btuHr || 0), 0);
     const pct = Math.round((occupied / this.rack.totalRu) * 100);
+    // load, heat and weight of the whole rack (both faces) by the one shared roll-up (js/rackRollup.js)
+    const r = rackRollup(this.rack);
+    const text = metricText(r);
 
     this.metricsRu.textContent = `${occupied} / ${this.rack.totalRu} RU (${pct}%)`;
-    this.metricsWatts.textContent = `${watts.toLocaleString()} W`;
-    this.metricsBtu.textContent = `${btu.toLocaleString()} BTU/hr`;
+    this.metricsWatts.textContent = text.watts;
+    this.metricsBtu.textContent = text.heat;
+    if (this.metricsKg) {
+      this.metricsKg.textContent = text.weight;
+      this.metricsKg.setAttribute('data-apk-state', r.overload === true ? 'dead' : r.overload === false ? 'good' : '');
+    }
   }
 
   createTable() {
@@ -270,6 +277,7 @@ export class ElevationApp {
         { key: 'category', label: 'Category', type: 'select', options: CATEGORIES },
         { key: 'powerW', label: 'Power (Watts)', type: 'number' },
         { key: 'btuHr', label: 'Thermal (BTU/hr)', type: 'number' },
+        { key: 'weightKg', label: 'Weight (kg)', type: 'number' },
         { key: 'identity', label: 'Live', render: (v) => live(v) },
       ],
       rows: [],
