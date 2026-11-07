@@ -4,7 +4,7 @@
 import { buildElevationSvg } from './elevationSvg.js';
 import { autoBlankFace } from './autoBlank.js';
 import {
-  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered, installFromLibrary, notRackable,
+  BLOCK_TYPE, CATEGORIES, rackFromBlock, rackToBlock, rackMeta, nextFreeRu, installDiscovered, installFromLibrary, notRackable, LIBRARY_FILTER,
 } from './rackBlock.js';
 import { libraryButton, acceptLibraryDrops } from './bimLibrary.js';
 import { rackRollup, metricText } from './rackRollup.js';
@@ -159,7 +159,8 @@ export class ElevationApp {
 
     // 📚 Library (ROAD-3572): every installed device is a BIM part, with its BIM reference
     this.btnAddDevice?.replaceWith(libraryButton((items) => this.installParts(items), {
-      className: 'btn btn-primary btn-sm', title: 'Install a device from the BIM library', multiple: true }));
+      className: 'btn btn-primary btn-sm', title: 'Install a device from the BIM library', multiple: true,
+      filter: LIBRARY_FILTER }));   // ROAD-3604: physical parts only — no Concepts offered
     if (this.previewStage) acceptLibraryDrops(this.previewStage, (item) => this.installParts([item]));
   }
 

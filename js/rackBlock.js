@@ -134,6 +134,13 @@ export function categoryOfPart(bim = {}) {
 }
 
 /**
+ * What the 📚 Library picker is asked for (ROAD-3604): physical parts only — the library leaves out
+ * every category whose IFC mapping is no physical type (Concepts), so a Concept is never offered.
+ * notRackable stays the guard: the library's chip can lift the scope, and a drop is not a pick.
+ */
+export const LIBRARY_FILTER = Object.freeze({ physical: true });
+
+/**
  * Why a BIM part cannot go in a rack unit, or '' when it can (ROAD-3601). A Concepts part — a flow
  * block, a schematic symbol, an adapter idea: BIM's non-physical category, which IFC maps to no
  * element type — has no metal to occupy a rack unit, so it is refused rather than racked as Audio.

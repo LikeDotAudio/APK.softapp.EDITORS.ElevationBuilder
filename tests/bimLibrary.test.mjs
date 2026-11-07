@@ -39,3 +39,23 @@ test('closing the library without a pick is no items, not an error', async () =>
 test('the picker is found by a root path or an absolute url, never a relative climb out of the repository', () => {
   for (const u of PICKER_URLS) assert.ok(/^(\/|https:)/.test(u) && !u.includes('../'), u);
 });
+
+test('the 📚 Library button asks the picker for physical parts only — no Concepts offered (ROAD-3604)', async () => {
+  const { LIBRARY_FILTER } = await import('../js/rackBlock.js');
+  const { libraryButton } = await import('../js/bimLibrary.js');
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual({ ...LIBRARY_FILTER }, { physical: true });
+  assert.match(readFileSync(new URL('../js/elevationApp.js', import.meta.url), 'utf8'), /libraryButton\(.*?multiple: true,\s*filter: LIBRARY_FILTER \}/s,
+    'the Elevation Builder passes it');
+  const listeners = {};
+  const doc = { createElement: () => ({ dataset: {}, addEventListener: (n, f) => { listeners[n] = f; } }) };
+  const was = globalThis.APKLibrary;
+  let asked = null;
+  globalThis.APKLibrary = { pick: async (o) => { asked = o; return []; } };
+  try {
+    libraryButton(() => {}, { doc, filter: LIBRARY_FILTER, multiple: true, shortcut: false });
+    await listeners.click();
+    assert.equal(asked.filter.physical, true);
+    assert.equal(asked.multiple, true);
+  } finally { globalThis.APKLibrary = was; }
+});
